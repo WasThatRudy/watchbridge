@@ -12,6 +12,8 @@ class WatchBridgeApp : Application() {
         const val SERVICE_CHANNEL_ID = "watchbridge_service"
         const val CONNECTION_ALERTS_CHANNEL_ID = "watchbridge_connection_alerts"
         const val MEDIA_CHANNEL_ID = "watchbridge_media"
+        const val PHONE_BATTERY_CHANNEL_ID = "watchbridge_phone_battery"
+        const val REST_TIMER_CHANNEL_ID = "watchbridge_rest_timer"
     }
 
     override fun onCreate() {
@@ -48,7 +50,30 @@ class WatchBridgeApp : Application() {
             setShowBadge(false)
         }
 
+        val phoneBattery = NotificationChannel(
+            PHONE_BATTERY_CHANNEL_ID,
+            "Phone battery",
+            NotificationManager.IMPORTANCE_HIGH
+        ).apply {
+            description = "Alert when the phone's battery runs low"
+            setShowBadge(false)
+            enableVibration(true)
+            vibrationPattern = longArrayOf(0, 200, 100, 200)
+        }
+
+        val restTimer = NotificationChannel(
+            REST_TIMER_CHANNEL_ID,
+            "Rest timer",
+            NotificationManager.IMPORTANCE_HIGH
+        ).apply {
+            description = "Rest timer finished"
+            setShowBadge(false)
+            enableVibration(true)
+            // Long, insistent: has to be felt mid-workout with the arm in motion
+            vibrationPattern = longArrayOf(0, 400, 150, 400, 150, 600)
+        }
+
         val nm = getSystemService(NotificationManager::class.java)
-        nm.createNotificationChannels(listOf(channel, alerts, media))
+        nm.createNotificationChannels(listOf(channel, alerts, media, phoneBattery, restTimer))
     }
 }

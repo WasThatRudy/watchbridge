@@ -18,4 +18,6 @@
     <string name="media_app_name">Music Control</string>
     <string name="media_tile_label">Music Control</string>
     <string name="camera_app_name">Camera Remote</string>
+    <string name="timer_app_name">Rest Timer</string>
+    <string name="timer_tile_label">Rest Timer</string>
 </resources>

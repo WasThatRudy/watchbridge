@@ -48,7 +48,13 @@ class WatchBridgeService : Service() {
         private const val TAG = "WatchBridgeService"
         private const val NOTIFICATION_ID = 1
         private const val BLUETOOTH_OFF_NOTIFICATION_ID = 2
+        private const val PHONE_BATTERY_NOTIFICATION_ID = 3
         private const val WAKE_LOCK_TAG = "WatchBridge::BleConnection"
+
+        /** Alert when the iPhone's battery drops to this level... */
+        private const val PHONE_BATTERY_LOW_PERCENT = 20
+        /** ...and again only after it has recovered past this (hysteresis, not spam). */
+        private const val PHONE_BATTERY_RESET_PERCENT = 25
 
         const val ACTION_START = "com.watchbridge.service.START"
         const val ACTION_STOP = "com.watchbridge.service.STOP"
@@ -212,8 +218,22 @@ class WatchBridgeService : Service() {
         }
 
         // The connection tile shows the iPhone's battery
+        var phoneBatteryAlerted = false
         serviceScope.launch {
-            connMgr.phoneBattery.collect { ConnectionTileService.requestUpdate(this@WatchBridgeService) }
+            connMgr.phoneBattery.collect { level ->
+                ConnectionTileService.requestUpdate(this@WatchBridgeService)
+
+                // Buzz once when the phone's battery drops low, so it can be charged
+                // before notifications stop arriving
+                when {
+                    level == null || level >= PHONE_BATTERY_RESET_PERCENT ->
+                        phoneBatteryAlerted = false
+                    level <= PHONE_BATTERY_LOW_PERCENT && !phoneBatteryAlerted -> {
+                        phoneBatteryAlerted = true
+                        if (settings.isPhoneBatteryAlertEnabled) showPhoneBatteryAlert(level)
+                    }
+                }
+            }
         }
         serviceScope.launch {
             connMgr.phoneDeviceName.collect { ConnectionTileService.requestUpdate(this@WatchBridgeService) }
@@ -341,6 +361,23 @@ class WatchBridgeService : Service() {
             .setOnlyAlertOnce(true)
             .build()
         nm.notify(BLUETOOTH_OFF_NOTIFICATION_ID, notification)
+    }
+
+    private fun showPhoneBatteryAlert(level: Int) {
+        val openApp = PendingIntent.getActivity(
+            this, PHONE_BATTERY_NOTIFICATION_ID, Intent(this, MainActivity::class.java),
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+        val notification = NotificationCompat.Builder(this, WatchBridgeApp.PHONE_BATTERY_CHANNEL_ID)
+            .setSmallIcon(R.drawable.ic_battery)
+            .setContentTitle("Phone battery low")
+            .setContentText("$level% left on your phone")
+            .setContentIntent(openApp)
+            .setAutoCancel(true)
+            .setOnlyAlertOnce(true)
+            .build()
+        getSystemService(android.app.NotificationManager::class.java)
+            .notify(PHONE_BATTERY_NOTIFICATION_ID, notification)
     }
 
     private fun updateNotification(statusText: String) {

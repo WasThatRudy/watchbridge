@@ -34,6 +34,14 @@
     <!-- Restart the bridge after a reboot or app update -->
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
 
+    <!-- Rest timer: the end-of-rest buzz must land on time, even in doze.
+         USE_EXACT_ALARM is granted to timer apps on 13+; older systems use the
+         auto-granted SCHEDULE_EXACT_ALARM (the code falls back to a window either way). -->
+    <uses-permission android:name="android.permission.USE_EXACT_ALARM" />
+    <uses-permission
+        android:name="android.permission.SCHEDULE_EXACT_ALARM"
+        android:maxSdkVersion="32" />
+
     <!-- Declare BLE feature -->
     <uses-feature android:name="android.hardware.bluetooth_le" android:required="true" />
 
@@ -79,6 +87,19 @@
             android:icon="@drawable/ic_launcher_camera"
             android:label="@string/camera_app_name"
             android:taskAffinity="com.watchbridge.camera">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+        <!-- Fourth launcher icon, "Rest Timer": standalone between-sets timer -->
+        <activity
+            android:name=".ui.RestTimerActivity"
+            android:exported="true"
+            android:icon="@drawable/ic_launcher_timer"
+            android:label="@string/timer_app_name"
+            android:taskAffinity="com.watchbridge.timer">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
@@ -155,6 +176,26 @@
             <meta-data
                 android:name="androidx.wear.tiles.PREVIEW"
                 android:resource="@drawable/ic_launcher_media" />
+        </service>
+
+        <!-- End-of-rest buzz, fired by AlarmManager so it survives doze and app death -->
+        <receiver
+            android:name=".timer.RestTimerAlarmReceiver"
+            android:exported="false" />
+
+        <!-- Rest timer tile: presets one swipe from the watch face -->
+        <service
+            android:name=".tile.RestTimerTileService"
+            android:exported="true"
+            android:icon="@drawable/ic_timer"
+            android:label="@string/timer_tile_label"
+            android:permission="com.google.android.wearable.permission.BIND_TILE_PROVIDER">
+            <intent-filter>
+                <action android:name="androidx.wear.tiles.action.BIND_TILE_PROVIDER" />
+            </intent-filter>
+            <meta-data
+                android:name="androidx.wear.tiles.PREVIEW"
+                android:resource="@drawable/ic_launcher_timer" />
         </service>
 
         <!-- Launched by the tile's Reconnect chip; tiles can only start activities -->

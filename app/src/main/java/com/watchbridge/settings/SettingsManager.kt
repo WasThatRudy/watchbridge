@@ -25,6 +25,7 @@ class SettingsManager(context: Context) {
         private const val KEY_SHOW_SILENT = "show_silent"
         private const val KEY_SHOW_PHONE_INFO = "show_phone_info"
         private const val KEY_CALLS_ON_WATCH = "calls_on_watch"
+        private const val KEY_PHONE_BATTERY_ALERT = "phone_battery_alert"
         private const val KEY_CALL_PERMISSIONS_ASKED = "call_permissions_asked"
         private const val KEY_CATEGORY_PREFIX = "category_enabled_"
     }
@@ -113,6 +114,18 @@ class SettingsManager(context: Context) {
     fun setCallsOnWatch(enabled: Boolean) {
         prefs.edit().putBoolean(KEY_CALLS_ON_WATCH, enabled).apply()
         _callsOnWatch.value = enabled
+    }
+
+    private val _phoneBatteryAlert = MutableStateFlow(prefs.getBoolean(KEY_PHONE_BATTERY_ALERT, true))
+    val phoneBatteryAlert: StateFlow<Boolean> = _phoneBatteryAlert.asStateFlow()
+
+    /** Buzz the watch when the iPhone's battery drops low. Read straight from SharedPreferences. */
+    val isPhoneBatteryAlertEnabled: Boolean
+        get() = prefs.getBoolean(KEY_PHONE_BATTERY_ALERT, true)
+
+    fun setPhoneBatteryAlert(enabled: Boolean) {
+        prefs.edit().putBoolean(KEY_PHONE_BATTERY_ALERT, enabled).apply()
+        _phoneBatteryAlert.value = enabled
     }
 
     fun setShowPhoneInfo(enabled: Boolean) {

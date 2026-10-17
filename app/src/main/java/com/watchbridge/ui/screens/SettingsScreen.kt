@@ -50,6 +50,7 @@ fun SettingsScreen(settings: SettingsManager) {
     val showSilent by settings.showSilent.collectAsState()
     val showPhoneInfo by settings.showPhoneInfo.collectAsState()
     val callsOnWatch by settings.callsOnWatch.collectAsState()
+    val phoneBatteryAlert by settings.phoneBatteryAlert.collectAsState()
 
     val categoryFilters = settings.getAllCategoryFilters()
     val listState = rememberScalingLazyListState()
@@ -162,6 +163,15 @@ fun SettingsScreen(settings: SettingsManager) {
                     secondaryLabel = "Silence when phone is on DND",
                     checked = respectDnd,
                     onCheckedChange = { settings.setRespectDnd(it) }
+                )
+            }
+
+            item {
+                SettingsToggle(
+                    label = "Phone battery alert",
+                    secondaryLabel = "Buzz when the phone drops below 20%",
+                    checked = phoneBatteryAlert,
+                    onCheckedChange = { settings.setPhoneBatteryAlert(it) }
                 )
             }
 

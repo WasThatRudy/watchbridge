@@ -211,6 +211,30 @@ class ConnectionStateMachine(
     }
 
     /**
+     * Watchdog entry: restart the reconnect cycle when the background connect has silently
+     * died. iOS rotates the iPhone's BLE address every ~15 minutes; a background connect
+     * armed against the stale address never completes, so WAITING_FOR_PHONE can last
+     * forever with the iPhone sitting right there. Tearing down and starting fresh makes
+     * the stack re-resolve the bonded device, which reconnects within seconds.
+     */
+    fun kickReconnect() {
+        if (!autoReconnectEnabled) return
+        if (!bondManager.isBluetoothEnabled()) return
+        val stuckState = _state.value
+        if (stuckState != State.WAITING_FOR_PHONE && stuckState != State.FAILED) return
+        if (!bondManager.hasPairedPhone()) return
+
+        Log.i(TAG, "Watchdog kick: restarting reconnect cycle from $stuckState")
+        reconnectJob?.cancel()
+        // Clears the half-open background connect; the DISCONNECTED event this causes is
+        // ignored by handleConnectionStateChange while in WAITING_FOR_PHONE
+        connectionManager.disconnectDevice()
+        reconnectAttempt = 0
+        currentBackoffMs = INITIAL_BACKOFF_MS
+        reconnectToPairedPhone()
+    }
+
+    /**
      * Start BLE advertising for first-time pairing.
      * When iPhone connects, transitions to CONNECTING and initiates GATT client connection.
      */

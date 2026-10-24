@@ -35,6 +35,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
@@ -55,6 +56,13 @@ class WatchBridgeService : Service() {
         private const val PHONE_BATTERY_LOW_PERCENT = 20
         /** ...and again only after it has recovered past this (hysteresis, not spam). */
         private const val PHONE_BATTERY_RESET_PERCENT = 25
+
+        /** How often the watchdog checks for a silently dead background connect. */
+        private const val WATCHDOG_INTERVAL_MS = 60_000L
+        /** WAITING_FOR_PHONE for this long → assume the background connect died; kick. */
+        private const val WATCHDOG_STUCK_MS = 4 * 60_000L
+        /** Screen-on nudge uses a shorter fuse: the user is looking at a stale watch. */
+        private const val WATCHDOG_SCREEN_ON_STUCK_MS = 60_000L
 
         const val ACTION_START = "com.watchbridge.service.START"
         const val ACTION_STOP = "com.watchbridge.service.STOP"
@@ -85,6 +93,24 @@ class WatchBridgeService : Service() {
     private var wakeLock: PowerManager.WakeLock? = null
     private var actionReceiver: NotificationActionReceiver? = null
     private var mediaSessionBridge: MediaSessionBridge? = null
+
+    /** When the state machine last changed state; the watchdog measures stuckness from it. */
+    @Volatile
+    private var lastStateChangeMs = System.currentTimeMillis()
+
+    /** Screen-on nudge: the user just raised their wrist — recover right now, not in minutes. */
+    private val screenOnReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context, intent: Intent) {
+            if (intent.action != Intent.ACTION_SCREEN_ON) return
+            val sm = stateMachine ?: return
+            if (sm.state.value == ConnectionStateMachine.State.WAITING_FOR_PHONE &&
+                System.currentTimeMillis() - lastStateChangeMs >= WATCHDOG_SCREEN_ON_STUCK_MS
+            ) {
+                Log.i(TAG, "Screen-on nudge: kicking stale background connect")
+                sm.kickReconnect()
+            }
+        }
+    }
 
     /** Pauses reconnecting while the watch's Bluetooth is off, resumes when it's back on. */
     private val bluetoothStateReceiver = object : BroadcastReceiver() {
@@ -181,6 +207,7 @@ class WatchBridgeService : Service() {
 
         serviceScope.launch {
             sm.state.collect { state ->
+                lastStateChangeMs = System.currentTimeMillis()
                 val statusText = when (state) {
                     ConnectionStateMachine.State.IDLE -> "Not connected"
                     ConnectionStateMachine.State.ADVERTISING -> "Waiting for phone..."
@@ -216,6 +243,22 @@ class WatchBridgeService : Service() {
         serviceScope.launch(Dispatchers.Main) {
             media.state.collect { sessionBridge.update(it) }
         }
+
+        // Watchdog: Android's background connect dies silently when the iPhone rotates its
+        // BLE address, leaving WAITING_FOR_PHONE forever with the phone in range. Kick the
+        // state machine when that state has visibly outlived the rotation interval.
+        serviceScope.launch {
+            while (true) {
+                delay(WATCHDOG_INTERVAL_MS)
+                if (sm.state.value == ConnectionStateMachine.State.WAITING_FOR_PHONE &&
+                    System.currentTimeMillis() - lastStateChangeMs >= WATCHDOG_STUCK_MS
+                ) {
+                    Log.i(TAG, "Watchdog: WAITING_FOR_PHONE too long, kicking reconnect")
+                    sm.kickReconnect()
+                }
+            }
+        }
+        registerReceiver(screenOnReceiver, IntentFilter(Intent.ACTION_SCREEN_ON))
 
         // The connection tile shows the iPhone's battery
         var phoneBatteryAlerted = false
@@ -295,6 +338,9 @@ class WatchBridgeService : Service() {
         } catch (_: IllegalArgumentException) { }
         try {
             unregisterReceiver(bluetoothStateReceiver)
+        } catch (_: IllegalArgumentException) { }
+        try {
+            unregisterReceiver(screenOnReceiver)
         } catch (_: IllegalArgumentException) { }
         showBluetoothOffAlert(false)
 
